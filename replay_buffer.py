@@ -20,7 +20,6 @@ class ReplayBuffer(object):
         self._ob_space = ob_space
         self._action_space = action_space
 
-        ob_dim = get_dim(self._ob_space)
         ac_dim = get_dim(self._action_space)
 
         self._max_replay_buffer_size = max_replay_buffer_size
@@ -28,13 +27,14 @@ class ReplayBuffer(object):
         """
         The class mutable state
         """
-
-        self._observations = np.zeros((max_replay_buffer_size, ob_dim))
+        self._observations = {k : np.zeros((max_replay_buffer_size, *self._ob_space[k].shape))
+                              for k in self._ob_space.spaces.keys()}
 
         # It's a bit memory inefficient to save the observations twice,
         # but it makes the code *much* easier since you no longer have to
         # worry about termination conditions.
-        self._next_obs = np.zeros((max_replay_buffer_size, ob_dim))
+        self._next_obs = {k : np.zeros((max_replay_buffer_size, *self._ob_space[k].shape))
+                          for k in self._ob_space.spaces.keys()}
         self._actions = np.zeros((max_replay_buffer_size, ac_dim))
 
         # Make everything a 2D np array to make it easier for other code to
@@ -90,11 +90,12 @@ class ReplayBuffer(object):
 
         assert not isinstance(self._action_space, Discrete)
 
-        self._observations[self._top] = observation
+        for k in observation.keys():
+            self._observations[k][self._top] = observation[k]
+            self._next_obs[k][self._top] = next_observation[k]
         self._actions[self._top] = action
         self._rewards[self._top] = reward
         self._terminals[self._top] = terminal
-        self._next_obs[self._top] = next_observation
 
         self._advance()
 
@@ -105,12 +106,14 @@ class ReplayBuffer(object):
 
     def random_batch(self, batch_size):
         indices = np.random.randint(0, self._size, batch_size)
+        observations = {k:self._observations[k][indices] for k in self._ob_space.spaces.keys()}
+        next_obs = {k:self._next_obs[k][indices] for k in self._ob_space.spaces.keys()}
         batch = dict(
-            observations=self._observations[indices],
+            observations=observations,
             actions=self._actions[indices],
             rewards=self._rewards[indices],
             terminals=self._terminals[indices],
-            next_observations=self._next_obs[indices],
+            next_observations=next_obs,
         )
         return batch
 

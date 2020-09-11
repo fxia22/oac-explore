@@ -7,17 +7,21 @@ import numpy as np
 
 def get_optimistic_exploration_action(ob_np, policy=None, qfs=None, hyper_params=None):
 
-    assert ob_np.ndim == 1
+    #assert ob_np.ndim == 1
 
     beta_UB = hyper_params['beta_UB']
     delta = hyper_params['delta']
 
-    ob = ptu.from_numpy(ob_np)
+    #ob = ptu.from_numpy(ob_np)
+    ob = {k:ptu.from_numpy(v[None]) for k,v in ob_np.items()}
 
     # Ensure that ob is not batched
-    assert len(list(ob.shape)) == 1
+    # assert len(list(ob.shape)) == 1
 
     _, pre_tanh_mu_T, _, _, std, _ = policy(ob)
+    #print(pre_tanh_mu_T.shape)
+    pre_tanh_mu_T = pre_tanh_mu_T[0]
+    std = std[0]
 
     # Ensure that pretanh_mu_T is not batched
     assert len(list(pre_tanh_mu_T.shape)) == 1, pre_tanh_mu_T
@@ -27,7 +31,7 @@ def get_optimistic_exploration_action(ob_np, policy=None, qfs=None, hyper_params
     tanh_mu_T = torch.tanh(pre_tanh_mu_T)
 
     # Get the upper bound of the Q estimate
-    args = list(torch.unsqueeze(i, dim=0) for i in (ob, tanh_mu_T))
+    args = [ob, torch.unsqueeze(tanh_mu_T, dim=0)]#list(torch.unsqueeze(i, dim=0) for i in (ob, tanh_mu_T))
     Q1 = qfs[0](*args)
     Q2 = qfs[1](*args)
 

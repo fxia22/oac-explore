@@ -6,11 +6,11 @@ import torch
 
 import utils.pytorch_util as ptu
 from replay_buffer import ReplayBuffer
-from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer
+from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer, gibson_env_producer, parallel_gibson_env_producer
 from utils.rng import set_global_pkg_rng_state
 from launcher_util import run_experiment_here
 from path_collector import MdpPathCollector, RemoteMdpPathCollector
-from trainer.policies import TanhGaussianPolicy, MakeDeterministic
+from trainer.policies import TanhGaussianPolicy, MakeDeterministic, ReLMoGenCritic, ReLMoGenTanhGaussianPolicy
 from trainer.trainer import SACTrainer
 from networks import FlattenMlp
 from rl_algorithm import BatchRLAlgorithm
@@ -36,14 +36,12 @@ def get_current_branch(dir):
     return repo.active_branch.name
 
 
-def get_policy_producer(obs_dim, action_dim, hidden_sizes):
+def get_policy_producer(observation_space, action_dim):
 
     def policy_producer(deterministic=False):
 
-        policy = TanhGaussianPolicy(
-            obs_dim=obs_dim,
-            action_dim=action_dim,
-            hidden_sizes=hidden_sizes,
+        policy = ReLMoGenTanhGaussianPolicy(
+            observation_space=observation_space, action_dim=action_dim
         )
 
         if deterministic:
@@ -54,11 +52,9 @@ def get_policy_producer(obs_dim, action_dim, hidden_sizes):
     return policy_producer
 
 
-def get_q_producer(obs_dim, action_dim, hidden_sizes):
+def get_q_producer(observation_space, action_dim):
     def q_producer():
-        return FlattenMlp(input_size=obs_dim + action_dim,
-                          output_size=1,
-                          hidden_sizes=hidden_sizes, )
+        return ReLMoGenCritic(observation_space=observation_space, action_dim=action_dim)
 
     return q_producer
 
@@ -67,18 +63,18 @@ def experiment(variant, prev_exp_state=None):
 
     domain = variant['domain']
     seed = variant['seed']
+    num_parallel = variant['num_parallel']
 
-    expl_env = env_producer(domain, seed)
+    expl_env = parallel_gibson_env_producer(num_env=num_parallel)
 
-    obs_dim = expl_env.observation_space.low.size
+    #obs_dim = expl_env.observation_space.low.size
+    observation_space = expl_env.observation_space
     action_dim = expl_env.action_space.low.size
 
     # Get producer function for policy and value functions
-    M = variant['layer_size']
-
-    q_producer = get_q_producer(obs_dim, action_dim, hidden_sizes=[M, M])
+    q_producer = get_q_producer(observation_space, action_dim)
     policy_producer = get_policy_producer(
-        obs_dim, action_dim, hidden_sizes=[M, M])
+        observation_space, action_dim)
     # Finished getting producer
 
     remote_eval_path_collector = RemoteMdpPathCollector.remote(
@@ -150,9 +146,10 @@ def get_cmd_args():
     parser.add_argument('--delta', type=float, default=0.0)
 
     # Training param
+    parser.add_argument('--num_parallel', type=int, default=2)
     parser.add_argument('--num_expl_steps_per_train_loop',
-                        type=int, default=1000)
-    parser.add_argument('--num_trains_per_train_loop', type=int, default=1000)
+                        type=int, default=1)
+    parser.add_argument('--num_trains_per_train_loop', type=int, default=1)
 
     args = parser.parse_args()
 
@@ -193,17 +190,20 @@ if __name__ == "__main__":
         algorithm="SAC",
         version="normal",
         layer_size=256,
-        replay_buffer_size=int(1E6),
+        replay_buffer_size=int(1E4),
+        num_parallel=None,
         algorithm_kwargs=dict(
-            num_eval_steps_per_epoch=5000,
+            num_epochs=3750,
+            num_train_loops_per_epoch=10000,
+            num_eval_steps_per_epoch=7500,
             num_trains_per_train_loop=None,
             num_expl_steps_per_train_loop=None,
-            min_num_steps_before_training=10000,
-            max_path_length=1000,
+            min_num_steps_before_training=200,
+            max_path_length=1,
             batch_size=256,
         ),
         trainer_kwargs=dict(
-            discount=0.99,
+            discount=0.9995,
             soft_target_tau=5e-3,
             target_update_period=1,
             policy_lr=3E-4,
@@ -220,10 +220,13 @@ if __name__ == "__main__":
 
     variant['seed'] = args.seed
     variant['domain'] = args.domain
-
-    variant['algorithm_kwargs']['num_epochs'] = domain_to_epoch(args.domain)
+    variant['num_parallel'] = args.num_parallel
+    variant['replay_buffer_size'] *= args.num_parallel
+    # variant['algorithm_kwargs']['num_epochs'] =  domain_to_epoch(args.domain)
     variant['algorithm_kwargs']['num_trains_per_train_loop'] = args.num_trains_per_train_loop
-    variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = args.num_expl_steps_per_train_loop
+    variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = args.num_parallel * args.num_expl_steps_per_train_loop
+    variant['algorithm_kwargs']['min_num_steps_before_training'] *= args.num_parallel
+    variant['algorithm_kwargs']['max_path_length'] *= args.num_parallel
 
     variant['optimistic_exp']['should_use'] = args.beta_UB > 0 or args.delta > 0
     variant['optimistic_exp']['beta_UB'] = args.beta_UB

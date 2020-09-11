@@ -44,12 +44,11 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
         self.max_path_length = max_path_length
         self.num_epochs = num_epochs
         self.num_eval_steps_per_epoch = num_eval_steps_per_epoch
-        self.num_trains_per_train_loop = num_trains_per_train_loop
         self.num_train_loops_per_epoch = num_train_loops_per_epoch
+        self.num_trains_per_train_loop = num_trains_per_train_loop
         self.num_expl_steps_per_train_loop = num_expl_steps_per_train_loop
         self.min_num_steps_before_training = min_num_steps_before_training
         self.optimistic_exp_hp = optimistic_exp_hp
-
         """
         The class mutable state
         """
@@ -113,7 +112,6 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
                     self.max_path_length,
                     self.num_expl_steps_per_train_loop,
                     discard_incomplete_paths=False,
-
                     optimistic_exploration=self.optimistic_exp_hp['should_use'],
                     optimistic_exploration_kwargs=dict(
                         policy=self.trainer.policy,

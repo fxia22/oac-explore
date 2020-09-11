@@ -3,6 +3,8 @@ import os
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
+from gibson2.envs.motion_planner_env import MotionPlanningBaseArmContinuousEnv
+from gibson2.envs.parallel_env import ParallelNavEnvironment
 
 
 def get_dim(space):
@@ -158,4 +160,31 @@ def env_producer(domain, seed):
     env.seed(seed)
     env = NormalizedBoxEnv(env)
 
+    return env
+
+def gibson_env_producer():
+    config_file="/opt/gibsonv2/examples/configs/fetch_interactive_nav_s2r_mp_continuous.yaml"
+    model_id="candcenter"
+    env_mode="headless"
+    arena="random_nav"
+    device_idx=1
+    log_dir="/result/test_oac_random_nav"
+
+    env = MotionPlanningBaseArmContinuousEnv(
+            config_file=config_file,
+            model_id=model_id,
+            collision_reward_weight=0.0,
+            mode=env_mode,
+            action_timestep=1 / 10.0,
+            physics_timestep=1 / 40.0,
+            device_idx=device_idx,
+            arena=arena,
+            log_dir=log_dir,
+    )
+    env.automatic_reset = True
+    return env
+
+
+def parallel_gibson_env_producer(num_env):
+    env = ParallelNavEnvironment([gibson_env_producer] * num_env, blocking=False)
     return env

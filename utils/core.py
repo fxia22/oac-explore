@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 import utils.pytorch_util as ptu
-
+from collections import OrderedDict
 
 def eval_np(module, *args, **kwargs):
     """
@@ -25,9 +25,10 @@ def eval_np(module, *args, **kwargs):
 def torch_ify(np_array_or_other):
     if isinstance(np_array_or_other, np.ndarray):
         return ptu.from_numpy(np_array_or_other)
+    elif isinstance(np_array_or_other, OrderedDict) or isinstance(np_array_or_other, dict):
+        return {k: ptu.from_numpy(v) for k, v in np_array_or_other.items()}
     else:
         return np_array_or_other
-
 
 def np_ify(tensor_or_other):
     if isinstance(tensor_or_other, torch.autograd.Variable):
@@ -41,20 +42,25 @@ def _elem_or_tuple_to_variable(elem_or_tuple):
         return tuple(
             _elem_or_tuple_to_variable(e) for e in elem_or_tuple
         )
+    elif isinstance(elem_or_tuple, OrderedDict) or isinstance(elem_or_tuple, dict):
+        return {k: ptu.from_numpy(v).float() for k, v in elem_or_tuple.items()}
+
     return ptu.from_numpy(elem_or_tuple).float()
 
 
 def _filter_batch(np_batch):
     for k, v in np_batch.items():
-        if v.dtype == np.bool:
+        if isinstance(v, np.ndarray) and v.dtype == np.bool:
             yield k, v.astype(int)
         else:
             yield k, v
 
 
 def np_to_pytorch_batch(np_batch):
-    return {
-        k: _elem_or_tuple_to_variable(x)
-        for k, x in _filter_batch(np_batch)
-        if x.dtype != np.dtype('O')  # ignore object (e.g. dictionaries)
-    }
+    res = dict()
+    for k,x in _filter_batch(np_batch):
+        if k == "observations" or k == "next_observations":
+            res[k] = _elem_or_tuple_to_variable(x)
+        elif x.dtype != np.dtype('O') :
+            res[k] = _elem_or_tuple_to_variable(x)
+    return res

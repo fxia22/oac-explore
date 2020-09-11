@@ -1,12 +1,13 @@
 from collections import deque, OrderedDict
 import torch
 
-from utils.env_utils import env_producer
+from utils.env_utils import env_producer, gibson_env_producer, parallel_gibson_env_producer
 from utils.eval_util import create_stats_ordered_dict
 from utils.rng import get_global_pkg_rng_state, set_global_pkg_rng_state
 import numpy as np
 import ray
 from optimistic_exploration import get_optimistic_exploration_action
+import copy
 
 
 class MdpPathCollector(object):
@@ -30,6 +31,7 @@ class MdpPathCollector(object):
         self._epoch_paths = deque(maxlen=self._max_num_epoch_paths_saved)
         self._num_steps_total = 0
         self._num_paths_total = 0
+        self.reset_called = False
 
     def collect_new_paths(
             self,
@@ -47,7 +49,7 @@ class MdpPathCollector(object):
                 max_path_length,
                 num_steps - num_steps_collected,
             )
-            path = rollout(
+            path = self.rollout(
                 self._env,
                 policy,
                 max_path_length=max_path_length_this_loop,
@@ -111,6 +113,115 @@ class MdpPathCollector(object):
         self._num_steps_total = ss['_num_steps_total']
         self._num_paths_total = ss['_num_paths_total']
 
+    def rollout(
+            self,
+            env,
+            agent,
+            max_path_length=np.inf,
+            render=False,
+            render_kwargs=None,
+            optimistic_exploration=False,
+            optimistic_exploration_kwargs={},
+    ):
+        """
+        The following value for the following keys will be a 2D array, with the
+        first dimension corresponding to the time dimension.
+         - observations
+         - actions
+         - rewards
+         - next_observations
+         - terminals
+
+        The next two elements will be lists of dictionaries, with the index into
+        the list being the index into the time
+         - agent_infos
+         - env_infos
+        """
+        if render_kwargs is None:
+            render_kwargs = {}
+        observations = []
+        actions = []
+        rewards = []
+        terminals = []
+        agent_infos = []
+        env_infos = []
+        if not self.reset_called:
+            o = env.reset()
+            self.reset_called = True
+        else:
+            o = self.cached_obs
+
+        num_env = len(o)
+        #agent.reset()
+        next_o = None
+        path_length = 0
+        if render:
+            env.render(**render_kwargs)
+        while path_length < max_path_length:
+
+            if not optimistic_exploration:
+                a = []
+                agent_info = []
+                for item in o:
+                    a_single, agent_info_single = agent.get_action(item)
+                    a.append(a_single)
+                    agent_info.append(agent_info_single)
+
+            else:
+                a = []
+                agent_info = []
+                for item in o:
+                    a_single, agent_info_single = get_optimistic_exploration_action(
+                        item, **optimistic_exploration_kwargs)
+                    a.append(a_single)
+                    agent_info.append(agent_info_single)
+
+            ts = env.step(a) # a list of timestep
+
+            next_o = [item[0] for item in ts] # list of dict
+            r = [item[1] for item in ts]
+            d = [item[2] for item in ts]
+            env_info  = [item[3] for item in ts]
+
+            observations.extend(o)
+            rewards.extend(r)
+            terminals.extend(d)
+            actions.extend(a)
+            agent_infos.extend(agent_info)
+            env_infos.extend(env_info)
+            path_length += num_env
+            o = next_o
+            if render:
+                env.render(**render_kwargs)
+
+        self.cached_obs = copy.deepcopy(next_o)
+
+        actions = np.array(actions)
+        if len(actions.shape) == 1:
+            actions = np.expand_dims(actions, 1)
+        #observations = np.array(observations)
+        #if len(observations.shape) == 1:
+        #    observations = np.expand_dims(observations, 1)
+        #    next_o = np.array([next_o])
+        #next_observations = np.vstack(
+        #    (
+        #        observations[num_env:, :],
+        #        next_o,
+        #    )
+        #)
+        next_observations = observations[num_env:]
+        next_observations.extend(next_o)
+
+        return dict(
+            observations=observations,
+            actions=actions,
+            rewards=np.array(rewards).reshape(-1, 1),
+            next_observations=next_observations,
+            terminals=np.array(terminals).reshape(-1, 1),
+            agent_infos=agent_infos,
+            env_infos=env_infos,
+        )
+
 
 @ray.remote(num_cpus=1)
 class RemoteMdpPathCollector(MdpPathCollector):
@@ -124,7 +235,7 @@ class RemoteMdpPathCollector(MdpPathCollector):
 
         torch.set_num_threads(1)
 
-        env = env_producer(domain_name, env_seed)
+        env = parallel_gibson_env_producer(num_env=1)
 
         self._policy_producer = policy_producer
 
@@ -159,86 +270,4 @@ class RemoteMdpPathCollector(MdpPathCollector):
 
     def set_global_pkg_rng_state(self, state):
         set_global_pkg_rng_state(state)
-
-
-def rollout(
-        env,
-        agent,
-        max_path_length=np.inf,
-        render=False,
-        render_kwargs=None,
-        optimistic_exploration=False,
-        optimistic_exploration_kwargs={},
-):
-    """
-    The following value for the following keys will be a 2D array, with the
-    first dimension corresponding to the time dimension.
-     - observations
-     - actions
-     - rewards
-     - next_observations
-     - terminals
-
-    The next two elements will be lists of dictionaries, with the index into
-    the list being the index into the time
-     - agent_infos
-     - env_infos
-    """
-    if render_kwargs is None:
-        render_kwargs = {}
-    observations = []
-    actions = []
-    rewards = []
-    terminals = []
-    agent_infos = []
-    env_infos = []
-    o = env.reset()
-    agent.reset()
-    next_o = None
-    path_length = 0
-    if render:
-        env.render(**render_kwargs)
-    while path_length < max_path_length:
-
-        if not optimistic_exploration:
-            a, agent_info = agent.get_action(o)
-        else:
-            a, agent_info = get_optimistic_exploration_action(
-                o, **optimistic_exploration_kwargs)
-
-        next_o, r, d, env_info = env.step(a)
-        observations.append(o)
-        rewards.append(r)
-        terminals.append(d)
-        actions.append(a)
-        agent_infos.append(agent_info)
-        env_infos.append(env_info)
-        path_length += 1
-        if d:
-            break
-        o = next_o
-        if render:
-            env.render(**render_kwargs)
-
-    actions = np.array(actions)
-    if len(actions.shape) == 1:
-        actions = np.expand_dims(actions, 1)
-    observations = np.array(observations)
-    if len(observations.shape) == 1:
-        observations = np.expand_dims(observations, 1)
-        next_o = np.array([next_o])
-    next_observations = np.vstack(
-        (
-            observations[1:, :],
-            np.expand_dims(next_o, 0)
-        )
-    )
-    return dict(
-        observations=observations,
-        actions=actions,
-        rewards=np.array(rewards).reshape(-1, 1),
-        next_observations=next_observations,
-        terminals=np.array(terminals).reshape(-1, 1),
-        agent_infos=agent_infos,
-        env_infos=env_infos,
-    )
+ 
