@@ -206,7 +206,7 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
             self.expl_data_collector.get_diagnostics(),
             prefix='exploration/'
         )
-        expl_paths = self.expl_data_collector.get_epoch_paths()
+        #expl_paths = self.expl_data_collector.get_epoch_paths()
         #logger.record_dict(
         #    eval_util.get_generic_path_information(expl_paths),
         #    prefix="exploration/",
@@ -218,8 +218,8 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
             ray.get(self.remote_eval_data_collector.get_diagnostics.remote()),
             prefix='remote_evaluation/',
         )
-        remote_eval_paths = ray.get(
-            self.remote_eval_data_collector.get_epoch_paths.remote())
+        #remote_eval_paths = ray.get(
+        #    self.remote_eval_data_collector.get_epoch_paths.remote())
         #logger.record_dict(
         #    eval_util.get_generic_path_information(remote_eval_paths),
         #    prefix="remote_evaluation/",
