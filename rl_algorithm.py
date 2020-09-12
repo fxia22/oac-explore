@@ -207,10 +207,10 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
             prefix='exploration/'
         )
         expl_paths = self.expl_data_collector.get_epoch_paths()
-        logger.record_dict(
-            eval_util.get_generic_path_information(expl_paths),
-            prefix="exploration/",
-        )
+        #logger.record_dict(
+        #    eval_util.get_generic_path_information(expl_paths),
+        #    prefix="exploration/",
+        #)
         """
         Remote Evaluation
         """
@@ -220,10 +220,10 @@ class BatchRLAlgorithm(metaclass=abc.ABCMeta):
         )
         remote_eval_paths = ray.get(
             self.remote_eval_data_collector.get_epoch_paths.remote())
-        logger.record_dict(
-            eval_util.get_generic_path_information(remote_eval_paths),
-            prefix="remote_evaluation/",
-        )
+        #logger.record_dict(
+        #    eval_util.get_generic_path_information(remote_eval_paths),
+        #    prefix="remote_evaluation/",
+        #)
 
         """
         Misc
