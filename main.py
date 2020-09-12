@@ -79,11 +79,13 @@ def experiment(variant, prev_exp_state=None):
 
     remote_eval_path_collector = RemoteMdpPathCollector.remote(
         domain, seed * 10 + 1,
-        policy_producer
+        policy_producer,
+        max_num_epoch_paths_saved=1
     )
 
     expl_path_collector = MdpPathCollector(
         expl_env,
+        max_num_epoch_paths_saved=1,
     )
     replay_buffer = ReplayBuffer(
         variant['replay_buffer_size'],
@@ -190,7 +192,7 @@ if __name__ == "__main__":
         algorithm="SAC",
         version="normal",
         layer_size=256,
-        replay_buffer_size=int(2E3),
+        replay_buffer_size=int(1E4),
         num_parallel=None,
         algorithm_kwargs=dict(
             num_epochs=3750,

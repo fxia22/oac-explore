@@ -96,8 +96,8 @@ class MdpPathCollector(object):
 
     def get_snapshot(self):
         return dict(
-            env_mj_state=self._env.sim.get_state(),
-            env_rng=self._env.np_random.get_state(),
+            #env_mj_state=self._env.sim.get_state(),
+            #env_rng=self._env.np_random.get_state(),
 
             _epoch_paths=self._epoch_paths,
             _num_steps_total=self._num_steps_total,
