@@ -150,8 +150,8 @@ def get_cmd_args():
     # Training param
     parser.add_argument('--num_parallel', type=int, default=2)
     parser.add_argument('--num_expl_steps_per_train_loop',
-                        type=int, default=1)
-    parser.add_argument('--num_trains_per_train_loop', type=int, default=1)
+                        type=int, default=500)
+    parser.add_argument('--num_trains_per_train_loop', type=int, default=8000)
 
     args = parser.parse_args()
 
@@ -192,16 +192,16 @@ if __name__ == "__main__":
         algorithm="SAC",
         version="normal",
         layer_size=256,
-        replay_buffer_size=int(1E4),
+        replay_buffer_size=int(8E3),
         num_parallel=None,
         algorithm_kwargs=dict(
-            num_epochs=3750,
-            num_train_loops_per_epoch=10000,
-            num_eval_steps_per_epoch=7500,
+            num_epochs=50000,
+            num_train_loops_per_epoch=10,
+            num_eval_steps_per_epoch=1000,
             num_trains_per_train_loop=None,
             num_expl_steps_per_train_loop=None,
-            min_num_steps_before_training=200,
-            max_path_length=1,
+            min_num_steps_before_training=500,
+            max_path_length=500,
             batch_size=256,
         ),
         trainer_kwargs=dict(
