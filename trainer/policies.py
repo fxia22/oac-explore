@@ -214,8 +214,10 @@ class Encoder(nn.Module):
     def __init__(self,
                  observation_space,
                  single_branch_size=256,
+                 custom_initialization=False,
                  ):
         super().__init__()
+        self.custom_initialization = custom_initialization
 
         if "sensor" in observation_space.spaces:
             self._n_non_vis_sensor = observation_space.spaces["sensor"].shape[0]
@@ -273,21 +275,38 @@ class Encoder(nn.Module):
                 in_channels = self._n_input_scan
             else:
                 in_channels = prev_out_channels
-            cnn_layers.append(nn.Conv1d(
+            conv_1d = nn.Conv1d(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 kernel_size=kernel_size,
                 stride=stride,
                 padding=padding,
-            ))
+            )
+            if self.custom_initialization:
+                nn.init.xavier_uniform_(conv_1d.weight)
+                conv_1d.bias.data.fill_(0)
+            cnn_layers.append(conv_1d)
+            #cnn_layers.append(nn.Conv1d(
+            #    in_channels=in_channels,
+            #    out_channels=out_channels,
+            #    kernel_size=kernel_size,
+            #    stride=stride,
+            #    padding=padding,
+            #))
             if i != len(self._cnn_1d_layers_params) - 1:
                 cnn_layers.append(nn.ReLU())
             prev_out_channels = out_channels
 
+        fc = nn.Linear(self._cnn_1d_layers_params[-1][0] * cnn_dim,
+                       self._single_branch_size)
+        if self.custom_initialization:
+            ptu.fanin_init(fc.weight)
+            fc.bias.data.fill_(0.0)
         cnn_layers += [
             Flatten(),
-            nn.Linear(self._cnn_1d_layers_params[-1][0] * cnn_dim,
-                      self._single_branch_size),
+            fc,
+            #nn.Linear(self._cnn_1d_layers_params[-1][0] * cnn_dim,
+            #          self._single_branch_size),
             nn.ReLU(),
         ]
         return nn.Sequential(*cnn_layers)
@@ -330,21 +349,38 @@ class Encoder(nn.Module):
                     in_channels = self._n_input_rgb + self._n_input_depth
                 else:
                     in_channels = prev_out_channels
-                cnn_layers.append(nn.Conv2d(
+                conv_2d = nn.Conv2d(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
                     stride=stride,
                     padding=padding,
-                ))
+                )
+                if self.custom_initialization:
+                    nn.init.xavier_uniform_(conv_2d.weight)
+                    conv_2d.bias.data.fill_(0)
+                cnn_layers.append(conv_2d)
+                #cnn_layers.append(nn.Conv2d(
+                #    in_channels=in_channels,
+                #    out_channels=out_channels,
+                #    kernel_size=kernel_size,
+                #    stride=stride,
+                #    padding=padding,
+                #))
                 if i != len(self._cnn_layers_params) - 1:
                     cnn_layers.append(nn.ReLU())
                 prev_out_channels = out_channels
 
+            fc = nn.Linear(self._cnn_layers_params[-1][0] * cnn_dims[0] * cnn_dims[1],
+                           self._single_branch_size)
+            if self.custom_initialization:
+                ptu.fanin_init(fc.weight)
+                fc.bias.data.fill_(0.0)
             cnn_layers += [
                 Flatten(),
-                nn.Linear(self._cnn_layers_params[-1][0] * cnn_dims[0] * cnn_dims[1],
-                          self._single_branch_size),
+                fc,
+                #nn.Linear(self._cnn_layers_params[-1][0] * cnn_dims[0] * cnn_dims[1],
+                #          self._single_branch_size),
                 nn.ReLU(),
             ]
             return nn.Sequential(*cnn_layers)
@@ -459,23 +495,33 @@ class ReLMoGenTanhGaussianPolicy(nn.Module):
             self,
             observation_space,
             action_dim,
+            custom_initialization=False,
             std=None,
             init_w=1e-3,
             **kwargs
     ):
         super().__init__()
-        self.encoder = Encoder(observation_space)
+        self.custom_initialization = custom_initialization
+        self.encoder = Encoder(observation_space, custom_initialization=custom_initialization)
         self.log_std = None
         self.std = std
 
         self.fc = nn.Linear(self.encoder.hidden_size, 256)
+        if self.custom_initialization:
+            ptu.fanin_init(self.fc.weight)
+            self.fc.bias.data.fill_(0.0)
         self.relu = nn.ReLU()
 
         self.last_fc = nn.Linear(256, action_dim)
+        if self.custom_initialization:
+            self.last_fc.weight.data.uniform_(-init_w, init_w)
+            self.last_fc.bias.data.fill_(0)
         if std is None:
             self.last_fc_log_std = nn.Linear(256, action_dim)
-            self.last_fc_log_std.weight.data.uniform_(-init_w, init_w)
-            self.last_fc_log_std.bias.data.uniform_(-init_w, init_w)
+            if self.custom_initialization:
+                self.last_fc_log_std.weight.data.uniform_(-init_w, init_w)
+                self.last_fc_log_std.bias.data.fill_(0)
+            #self.last_fc_log_std.bias.data.uniform_(-init_w, init_w)
         else:
             self.log_std = np.log(std)
             assert LOG_SIG_MIN <= self.log_std <= LOG_SIG_MAX
@@ -550,20 +596,33 @@ class ReLMoGenCritic(nn.Module):
             self,
             observation_space,
             action_dim,
+            custom_initialization=False,
             std=None,
             init_w=1e-3,
             **kwargs
     ):
         super().__init__()
-
-        self.encoder = Encoder(observation_space)
+        self.custom_initialization = custom_initialization
+        self.encoder = Encoder(observation_space, custom_initialization=custom_initialization)
         self.obs_fc = nn.Linear(self.encoder.hidden_size, 256)
+        if self.custom_initialization:
+            ptu.fanin_init(self.obs_fc.weight)
+            self.obs_fc.bias.data.fill_(0.0)
         self.obs_relu = nn.ReLU()
         self.action_fc = nn.Linear(action_dim, 256)
+        if self.custom_initialization:
+            ptu.fanin_init(self.action_fc.weight)
+            self.action_fc.bias.data.fill_(0.0)
         self.action_relu = nn.ReLU()
         self.joint_fc = nn.Linear(512, 256)
+        if self.custom_initialization:
+            ptu.fanin_init(self.joint_fc.weight)
+            self.joint_fc.bias.data.fill_(0.0)
         self.joint_relu = nn.ReLU()
         self.last_fc = nn.Linear(256, 1)
+        if self.custom_initialization:
+            self.last_fc.weight.data.uniform_(-init_w, init_w)
+            self.last_fc.bias.data.fill_(0)
 
         """
         self.fc1 = nn.Linear(14, 256)

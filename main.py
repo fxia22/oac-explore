@@ -36,12 +36,12 @@ def get_current_branch(dir):
     return repo.active_branch.name
 
 
-def get_policy_producer(observation_space, action_dim):
+def get_policy_producer(observation_space, action_dim, custom_initialization):
 
     def policy_producer(deterministic=False):
 
         policy = ReLMoGenTanhGaussianPolicy(
-            observation_space=observation_space, action_dim=action_dim
+            observation_space=observation_space, action_dim=action_dim, custom_initialization=custom_initialization,
         )
 
         if deterministic:
@@ -52,9 +52,9 @@ def get_policy_producer(observation_space, action_dim):
     return policy_producer
 
 
-def get_q_producer(observation_space, action_dim):
+def get_q_producer(observation_space, action_dim, custom_initialization):
     def q_producer():
-        return ReLMoGenCritic(observation_space=observation_space, action_dim=action_dim)
+        return ReLMoGenCritic(observation_space=observation_space, action_dim=action_dim, custom_initialization=custom_initialization)
 
     return q_producer
 
@@ -64,6 +64,7 @@ def experiment(variant, prev_exp_state=None):
     domain = variant['domain']
     seed = variant['seed']
     num_parallel = variant['num_parallel']
+    custom_initialization = variant['custom_initialization']
 
     expl_env = parallel_gibson_env_producer(num_env=num_parallel)
     #expl_env = parallel_gibson_stadium_env_producer(num_env=num_parallel)
@@ -73,9 +74,9 @@ def experiment(variant, prev_exp_state=None):
     action_dim = expl_env.action_space.low.size
 
     # Get producer function for policy and value functions
-    q_producer = get_q_producer(observation_space, action_dim)
+    q_producer = get_q_producer(observation_space, action_dim, custom_initialization)
     policy_producer = get_policy_producer(
-        observation_space, action_dim)
+        observation_space, action_dim, custom_initialization)
     # Finished getting producer
 
     remote_eval_path_collector = RemoteMdpPathCollector.remote(
@@ -158,6 +159,7 @@ def get_cmd_args():
     parser.add_argument('--num_eval_steps_per_epoch', type=int, default=1000)
 
     parser.add_argument('--dir_suffix', type=str, default="exp")
+    parser.add_argument('--custom_initialization', dest='custom_initialization', action='store_true')
 
     args = parser.parse_args()
 
@@ -198,6 +200,7 @@ if __name__ == "__main__":
         algorithm="SAC",
         version="normal",
         layer_size=256,
+        custom_initialization=None,
         replay_buffer_size=int(1E5),
         num_parallel=None,
         algorithm_kwargs=dict(
@@ -225,10 +228,10 @@ if __name__ == "__main__":
     args = get_cmd_args()
 
     variant['log_dir'] = get_log_dir(args)
-
     variant['seed'] = args.seed
     variant['domain'] = args.domain
     variant['num_parallel'] = args.num_parallel
+    variant['custom_initialization'] = args.custom_initialization
     variant['algorithm_kwargs']['num_train_loops_per_epoch'] = args.num_train_loops_per_epoch
     variant['algorithm_kwargs']['num_trains_per_train_loop'] = args.num_trains_per_train_loop
     variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = args.num_parallel * args.num_expl_steps_per_train_loop
