@@ -222,34 +222,40 @@ class Encoder(nn.Module):
         else:
             self._n_non_vis_sensor = 0
 
-        if "scan" in observation_space.spaces:
-            self._n_scan = observation_space.spaces["scan"].shape[0]
-        else:
-            self._n_scan = 0
-
         self._single_branch_size = single_branch_size
-        self.hidden_size = single_branch_size * 3
+        self.hidden_size = 0
 
         self.feature_linear = nn.Sequential(
             nn.Linear(self._n_non_vis_sensor,
                         self._single_branch_size),
             nn.ReLU()
         )
+        self.hidden_size += single_branch_size
 
         self._cnn_layers_params = [
                 (32, 8, 4, 0), (64, 4, 2, 0), (64, 3, 1, 0)]
         self.cnn = self._init_perception_model(observation_space)
+        if not self.is_blind:
+            self.hidden_size += single_branch_size
 
-        if self._n_scan > 0:
-            self._cnn_1d_layers_params = [
-                (32, 8, 4, 0), (64, 4, 2, 0), (64, 3, 1, 0)]
+        self._cnn_1d_layers_params = [
+            (32, 8, 4, 0), (64, 4, 2, 0), (64, 3, 1, 0)]
         self.cnn_1d = self._init_lidar_model(observation_space)
+        if self._n_input_scan > 0:
+            self.hidden_size += single_branch_size
 
-        self.layer_init()
+        #self.layer_init()
         self.train()
 
     def _init_lidar_model(self, observation_space):
-        self._n_input_scan = observation_space.spaces["scan"].shape[1]
+        if "scan" in observation_space.spaces:
+            self._n_input_scan = observation_space.spaces["scan"].shape[1]
+        else:
+            self._n_input_scan = 0
+
+        if self._n_input_scan == 0:
+            return nn.Sequential()
+
         cnn_dim = observation_space.spaces["scan"].shape[0]
         for _, kernel_size, stride, padding in self._cnn_1d_layers_params:
             cnn_dim = self._conv_1d_output_dim(
@@ -383,59 +389,6 @@ class Encoder(nn.Module):
                 nn.init.orthogonal_(layer.weight, gain=1)
                 nn.init.constant_(layer.bias, val=0)
 
-    def forward_rnn(self, x, hidden_states, masks):
-        if x.size(0) == hidden_states.size(0):
-            assert hidden_states.size(0) == masks.size(0)
-            x, hidden_states = self.rnn(
-                x.unsqueeze(0), (hidden_states * masks).unsqueeze(0)
-            )
-            x = x.squeeze(0)
-            hidden_states = hidden_states.squeeze(0)
-        else:
-            # x is a (T, N, -1) tensor flattened to (T * N, -1)
-            n = hidden_states.size(0)
-            t = int(x.size(0) / n)
-
-            # unflatten
-            x = x.view(t, n, x.size(1))
-            masks = masks.view(t, n)
-
-            # steps in sequence which have zero for any agent. Assume t=0 has
-            # a zero in it.
-            has_zeros = (
-                (masks[1:] == 0.0).any(dim=-1).nonzero().squeeze().cpu()
-            )
-
-            # +1 to correct the masks[1:]
-            if has_zeros.dim() == 0:
-                has_zeros = [has_zeros.item() + 1]  # handle scalar
-            else:
-                has_zeros = (has_zeros + 1).numpy().tolist()
-
-            # add t=0 and t=T to the list
-            has_zeros = [0] + has_zeros + [t]
-
-            hidden_states = hidden_states.unsqueeze(0)
-            outputs = []
-            for i in range(len(has_zeros) - 1):
-                # process steps that don't have any zeros in masks together
-                start_idx = has_zeros[i]
-                end_idx = has_zeros[i + 1]
-
-                rnn_scores, hidden_states = self.rnn(
-                    x[start_idx:end_idx],
-                    hidden_states * masks[start_idx].view(1, -1, 1),
-                )
-
-                outputs.append(rnn_scores)
-
-            # x is a (T, N, -1) tensor
-            x = torch.cat(outputs, dim=0)
-            x = x.view(t * n, -1)  # flatten
-            hidden_states = hidden_states.squeeze(0)
-
-        return x, hidden_states
-
     @property
     def is_blind(self):
         return self._n_input_rgb + self._n_input_depth == 0
@@ -473,7 +426,7 @@ class Encoder(nn.Module):
             else:
                 x = torch.cat([x, perception_embed], dim=1)
 
-        if self._n_scan > 0:
+        if self._n_input_scan > 0:
             lidar_embed = self.forward_lidar_model(observations)
             if x is None:
                 x = lidar_embed
@@ -516,6 +469,8 @@ class ReLMoGenTanhGaussianPolicy(nn.Module):
         self.std = std
 
         self.fc = nn.Linear(self.encoder.hidden_size, 256)
+        self.relu = nn.ReLU()
+
         self.last_fc = nn.Linear(256, action_dim)
         if std is None:
             self.last_fc_log_std = nn.Linear(256, action_dim)
@@ -545,7 +500,7 @@ class ReLMoGenTanhGaussianPolicy(nn.Module):
         :param return_log_prob: If True, return a sample and its log probability
         """
         h = self.encoder(obs)
-        h = self.fc(h)
+        h = self.relu(self.fc(h))
         mean = self.last_fc(h)
         if self.std is None:
             log_std = self.last_fc_log_std(h)
@@ -600,18 +555,38 @@ class ReLMoGenCritic(nn.Module):
             **kwargs
     ):
         super().__init__()
+
         self.encoder = Encoder(observation_space)
         self.obs_fc = nn.Linear(self.encoder.hidden_size, 256)
+        self.obs_relu = nn.ReLU()
         self.action_fc = nn.Linear(action_dim, 256)
+        self.action_relu = nn.ReLU()
         self.joint_fc = nn.Linear(512, 256)
+        self.joint_relu = nn.ReLU()
         self.last_fc = nn.Linear(256, 1)
 
+        """
+        self.fc1 = nn.Linear(14, 256)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(256, 256)
+        self.relu2 = nn.ReLU()
+        self.last_fc = nn.Linear(256, 1)
+        """
+
     def forward(self, obs, action):
+
         h1 = self.encoder(obs)
-        h1 = self.obs_fc(h1)
-        h2 = self.action_fc(action)
-        h = self.joint_fc(torch.cat((h1, h2), dim=1))
+        h1 = self.obs_relu(self.obs_fc(h1))
+        h2 = self.action_relu(self.action_fc(action))
+        h = self.joint_relu(self.joint_fc(torch.cat((h1, h2), dim=1)))
         q = self.last_fc(h)
+
+        """
+        h = self.relu1(self.fc1(obs['sensor']))
+        h = self.relu2(self.fc2(h))
+        q = self.last_fc(h)
+        """
+
         return q
 
     def reset(self):
@@ -662,6 +637,7 @@ if __name__ == "__main__":
                 high=np.inf,
                 shape=(220, 1),
                 dtype=np.float32)
+
     observation_space = gym.spaces.Dict(observation_space)
     actor = ReLMoGenTanhGaussianPolicy(observation_space, 3)
     critic = ReLMoGenCritic(observation_space, 3)

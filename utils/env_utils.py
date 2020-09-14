@@ -5,6 +5,7 @@ from gym.spaces import Box, Discrete, Tuple
 import numpy as np
 from gibson2.envs.motion_planner_env import MotionPlanningBaseArmContinuousEnv
 from gibson2.envs.parallel_env import ParallelNavEnvironment
+from gibson2.envs.locomotor_env import NavigateRandomEnv
 
 
 def get_dim(space):
@@ -185,6 +186,26 @@ def gibson_env_producer():
     return env
 
 
+def gibson_stadium_env_producer():
+    config_file="/opt/gibsonv2/examples/configs/fetch_stadium.yaml"
+    env_mode="headless"
+    device_idx = 1
+    env = NavigateRandomEnv(
+        config_file=config_file,
+        mode=env_mode,
+        action_timestep=1 / 10.0,
+        physics_timestep=1 / 40.0,
+        device_idx=device_idx,
+    )
+    env.automatic_reset = True
+    return env
+
+
 def parallel_gibson_env_producer(num_env):
     env = ParallelNavEnvironment([gibson_env_producer] * num_env, blocking=False)
+    return env
+
+
+def parallel_gibson_stadium_env_producer(num_env):
+    env = ParallelNavEnvironment([gibson_stadium_env_producer] * num_env, blocking=False)
     return env

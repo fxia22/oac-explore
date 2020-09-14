@@ -1,7 +1,7 @@
 from collections import deque, OrderedDict
 import torch
 
-from utils.env_utils import env_producer, gibson_env_producer, parallel_gibson_env_producer
+from utils.env_utils import env_producer, gibson_env_producer, parallel_gibson_env_producer, gibson_stadium_env_producer, parallel_gibson_stadium_env_producer
 from utils.eval_util import create_stats_ordered_dict
 from utils.rng import get_global_pkg_rng_state, set_global_pkg_rng_state
 import numpy as np
@@ -236,6 +236,7 @@ class RemoteMdpPathCollector(MdpPathCollector):
         torch.set_num_threads(1)
 
         env = parallel_gibson_env_producer(num_env=1)
+        #env = parallel_gibson_stadium_env_producer(num_env=1)
 
         self._policy_producer = policy_producer
 

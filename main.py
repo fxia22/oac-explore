@@ -6,7 +6,7 @@ import torch
 
 import utils.pytorch_util as ptu
 from replay_buffer import ReplayBuffer
-from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer, gibson_env_producer, parallel_gibson_env_producer
+from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer, gibson_env_producer, parallel_gibson_env_producer, gibson_stadium_env_producer, parallel_gibson_stadium_env_producer
 from utils.rng import set_global_pkg_rng_state
 from launcher_util import run_experiment_here
 from path_collector import MdpPathCollector, RemoteMdpPathCollector
@@ -66,6 +66,7 @@ def experiment(variant, prev_exp_state=None):
     num_parallel = variant['num_parallel']
 
     expl_env = parallel_gibson_env_producer(num_env=num_parallel)
+    #expl_env = parallel_gibson_stadium_env_producer(num_env=num_parallel)
 
     #obs_dim = expl_env.observation_space.low.size
     observation_space = expl_env.observation_space
@@ -148,10 +149,15 @@ def get_cmd_args():
     parser.add_argument('--delta', type=float, default=0.0)
 
     # Training param
+    parser.add_argument('--num_train_loops_per_epoch', type=int, default=1)
     parser.add_argument('--num_parallel', type=int, default=2)
     parser.add_argument('--num_expl_steps_per_train_loop',
-                        type=int, default=1)
-    parser.add_argument('--num_trains_per_train_loop', type=int, default=1)
+                        type=int, default=1000)
+    parser.add_argument('--num_trains_per_train_loop', type=int, default=1000)
+    parser.add_argument('--max_path_length', type=int, default=1000)
+    parser.add_argument('--num_eval_steps_per_epoch', type=int, default=1000)
+
+    parser.add_argument('--dir_suffix', type=str, default="exp")
 
     args = parser.parse_args()
 
@@ -164,7 +170,7 @@ def get_log_dir(args, should_include_base_log_dir=True, should_include_seed=True
         get_current_branch('./'),
 
         # Algo kwargs portion
-        f'num_expl_steps_per_train_loop_{args.num_expl_steps_per_train_loop}_num_trains_per_train_loop_{args.num_trains_per_train_loop}'
+        f'num_expl_steps_per_train_loop_{args.num_expl_steps_per_train_loop}_num_trains_per_train_loop_{args.num_trains_per_train_loop}_{args.dir_suffix}'
 
         # optimistic exploration dependent portion
         f'beta_UB_{args.beta_UB}_delta_{args.delta}',
@@ -192,20 +198,20 @@ if __name__ == "__main__":
         algorithm="SAC",
         version="normal",
         layer_size=256,
-        replay_buffer_size=int(1E4),
+        replay_buffer_size=int(1E5),
         num_parallel=None,
         algorithm_kwargs=dict(
-            num_epochs=3750,
-            num_train_loops_per_epoch=10000,
-            num_eval_steps_per_epoch=7500,
+            num_epochs=50000,
+            num_train_loops_per_epoch=None,
+            num_eval_steps_per_epoch=None,
             num_trains_per_train_loop=None,
             num_expl_steps_per_train_loop=None,
-            min_num_steps_before_training=200,
-            max_path_length=1,
+            max_path_length=None,
+            min_num_steps_before_training=int(1E4),
             batch_size=256,
         ),
         trainer_kwargs=dict(
-            discount=0.9995,
+            discount=0.99,
             soft_target_tau=5e-3,
             target_update_period=1,
             policy_lr=3E-4,
@@ -223,12 +229,11 @@ if __name__ == "__main__":
     variant['seed'] = args.seed
     variant['domain'] = args.domain
     variant['num_parallel'] = args.num_parallel
-    variant['replay_buffer_size'] *= args.num_parallel
-    # variant['algorithm_kwargs']['num_epochs'] =  domain_to_epoch(args.domain)
+    variant['algorithm_kwargs']['num_train_loops_per_epoch'] = args.num_train_loops_per_epoch
     variant['algorithm_kwargs']['num_trains_per_train_loop'] = args.num_trains_per_train_loop
     variant['algorithm_kwargs']['num_expl_steps_per_train_loop'] = args.num_parallel * args.num_expl_steps_per_train_loop
-    variant['algorithm_kwargs']['min_num_steps_before_training'] *= args.num_parallel
-    variant['algorithm_kwargs']['max_path_length'] *= args.num_parallel
+    variant['algorithm_kwargs']['max_path_length'] = args.num_parallel * args.max_path_length
+    variant['algorithm_kwargs']['num_eval_steps_per_epoch'] = args.num_parallel * args.num_eval_steps_per_epoch
 
     variant['optimistic_exp']['should_use'] = args.beta_UB > 0 or args.delta > 0
     variant['optimistic_exp']['beta_UB'] = args.beta_UB
