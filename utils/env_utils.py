@@ -165,7 +165,7 @@ def env_producer(domain, seed):
 
 def gibson_env_producer():
     config_file="/opt/gibsonv2/examples/configs/fetch_interactive_nav_s2r_mp_continuous.yaml"
-    model_id="candcenter"
+    model_id=os.environ['SCENE']
     env_mode="headless"
     #arena="random_nav"
     arena=os.environ['TASK']
