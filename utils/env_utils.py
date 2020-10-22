@@ -167,9 +167,13 @@ def gibson_env_producer():
     config_file="/opt/gibsonv2/examples/configs/fetch_interactive_nav_s2r_mp_continuous.yaml"
     model_id="candcenter"
     env_mode="headless"
-    arena="random_nav"
+    #arena="random_nav"
+    arena=os.environ['TASK']
     device_idx=1
-    log_dir="/result/test_oac_random_nav"
+    log_dir="/result/test_oac_" + arena
+
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
     env = MotionPlanningBaseArmContinuousEnv(
             config_file=config_file,
