@@ -455,7 +455,7 @@ class Encoder(nn.Module):
         return self.cnn_1d(lidar_input)
 
     def forward(self, observations):
-        if "sensor" in observation_space.spaces:
+        if 'sensor' in observations:
             x = self.feature_linear(observations["sensor"])
         else:
             x = None
