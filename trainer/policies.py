@@ -233,7 +233,7 @@ class Encoder(nn.Module):
                           self._single_branch_size),
                 nn.ReLU()
             )
-        self.hidden_size += single_branch_size
+            self.hidden_size += single_branch_size
 
         self._cnn_layers_params = [
                 (32, 8, 4, 0), (64, 4, 2, 0), (64, 3, 1, 0)]
