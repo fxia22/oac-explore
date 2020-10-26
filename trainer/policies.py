@@ -227,12 +227,13 @@ class Encoder(nn.Module):
         self._single_branch_size = single_branch_size
         self.hidden_size = 0
 
-        self.feature_linear = nn.Sequential(
-            nn.Linear(self._n_non_vis_sensor,
-                        self._single_branch_size),
-            nn.ReLU()
-        )
-        self.hidden_size += single_branch_size
+        if "sensor" in observation_space.spaces:
+            self.feature_linear = nn.Sequential(
+                nn.Linear(self._n_non_vis_sensor,
+                          self._single_branch_size),
+                nn.ReLU()
+            )
+            self.hidden_size += single_branch_size
 
         self._cnn_layers_params = [
                 (32, 8, 4, 0), (64, 4, 2, 0), (64, 3, 1, 0)]
@@ -454,7 +455,10 @@ class Encoder(nn.Module):
         return self.cnn_1d(lidar_input)
 
     def forward(self, observations):
-        x = self.feature_linear(observations["sensor"])
+        if 'sensor' in observations:
+            x = self.feature_linear(observations["sensor"])
+        else:
+            x = None
         if not self.is_blind:
             perception_embed = self.forward_perception_model(observations)
             if x is None:
