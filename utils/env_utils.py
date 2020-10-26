@@ -3,9 +3,9 @@ import os
 from gym import Env
 from gym.spaces import Box, Discrete, Tuple
 import numpy as np
-from gibson2.envs.motion_planner_env import MotionPlanningBaseArmContinuousEnv
-from gibson2.envs.parallel_env import ParallelNavEnvironment
-from gibson2.envs.locomotor_env import NavigateRandomEnv
+from gibson2.envs.motion_planner_env import MotionPlanningEnv
+from gibson2.envs.parallel_env import ParallelNavEnv
+# from gibson2.envs.locomotor_env import NavigateRandomEnv
 
 
 def get_dim(space):
@@ -164,52 +164,45 @@ def env_producer(domain, seed):
     return env
 
 def gibson_env_producer():
-    config_file="/opt/gibsonv2/examples/configs/fetch_interactive_nav_s2r_mp_continuous.yaml"
-    model_id=os.environ['SCENE']
+    config_file="/home/fei/Development/gibsonv2/examples/configs/fetch_push_door_nav.yaml"
+    #model_id=os.environ['SCENE']
     env_mode="headless"
     #arena="random_nav"
-    arena=os.environ['TASK']
-    device_idx=1
-    log_dir="/result/test_oac_" + arena
+    #arena=os.environ['TASK']
+    #device_idx=1
+    #log_dir="/result/test_oac_" + arena
 
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    #if not os.path.exists(log_dir):
+    #    os.makedirs(log_dir)
 
-    env = MotionPlanningBaseArmContinuousEnv(
+    env = MotionPlanningEnv(
             config_file=config_file,
-            model_id=model_id,
-            collision_reward_weight=0.0,
             mode=env_mode,
-            action_timestep=1 / 10.0,
-            physics_timestep=1 / 40.0,
-            device_idx=device_idx,
-            arena=arena,
-            log_dir=log_dir,
     )
     env.automatic_reset = True
     return env
 
 
-def gibson_stadium_env_producer():
-    config_file="/opt/gibsonv2/examples/configs/fetch_stadium.yaml"
-    env_mode="headless"
-    device_idx = 1
-    env = NavigateRandomEnv(
-        config_file=config_file,
-        mode=env_mode,
-        action_timestep=1 / 10.0,
-        physics_timestep=1 / 40.0,
-        device_idx=device_idx,
-    )
-    env.automatic_reset = True
-    return env
+# def gibson_stadium_env_producer():
+#     config_file="/opt/gibsonv2/examples/configs/fetch_stadium.yaml"
+#     env_mode="headless"
+#     device_idx = 1
+#     env = NavigateRandomEnv(
+#         config_file=config_file,
+#         mode=env_mode,
+#         action_timestep=1 / 10.0,
+#         physics_timestep=1 / 40.0,
+#         device_idx=device_idx,
+#     )
+#     env.automatic_reset = True
+#     return env
 
 
 def parallel_gibson_env_producer(num_env):
-    env = ParallelNavEnvironment([gibson_env_producer] * num_env, blocking=False)
+    env = ParallelNavEnv([gibson_env_producer] * num_env, blocking=False)
     return env
 
 
 def parallel_gibson_stadium_env_producer(num_env):
-    env = ParallelNavEnvironment([gibson_stadium_env_producer] * num_env, blocking=False)
+    env = ParallelNavEnv([gibson_stadium_env_producer] * num_env, blocking=False)
     return env

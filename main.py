@@ -6,7 +6,7 @@ import torch
 
 import utils.pytorch_util as ptu
 from replay_buffer import ReplayBuffer
-from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer, gibson_env_producer, parallel_gibson_env_producer, gibson_stadium_env_producer, parallel_gibson_stadium_env_producer
+from utils.env_utils import NormalizedBoxEnv, domain_to_epoch, env_producer, gibson_env_producer, parallel_gibson_env_producer, parallel_gibson_stadium_env_producer
 from utils.rng import set_global_pkg_rng_state
 from launcher_util import run_experiment_here
 from path_collector import MdpPathCollector, RemoteMdpPathCollector
@@ -201,7 +201,7 @@ if __name__ == "__main__":
         version="normal",
         layer_size=256,
         custom_initialization=None,
-        replay_buffer_size=int(1E5),
+        replay_buffer_size=int(1E3),
         num_parallel=None,
         algorithm_kwargs=dict(
             num_epochs=50000,
